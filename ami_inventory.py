@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 EXIF_DATETIME_STR_FORMAT = "%Y:%m:%d %H:%M:%S"
 SUPPORTED_IMAGE_EXTENSIONS = (".jpg", ".jpeg")
-IMAGE_BASE_URL = "https://object-arbutus.cloud.computecanada.ca/ami-trapdata/"
+IMAGE_BASE_URL = "https://cloud.computecanada.ca/bucket/prefix/"
 FilePath = Union[pathlib.Path, str]
 
 # Optional imports
