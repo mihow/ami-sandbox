@@ -1,6 +1,7 @@
 import collections
 import csv
 import datetime
+import functools
 import hashlib
 import logging
 import os
@@ -9,7 +10,7 @@ import re
 import time
 import urllib.parse
 from sys import platform as _sys_platform
-from typing import Literal, Optional, Union, Generator
+from typing import Generator, Literal, Optional, Union
 
 import dateutil.parser
 from dateutil.parser import ParserError
@@ -21,7 +22,9 @@ SUPPORTED_IMAGE_EXTENSIONS = (".jpg", ".jpeg")
 IMAGE_BASE_URL = "https://object-arbutus.cloud.computecanada.ca/ami-trapdata/"
 FilePath = Union[pathlib.Path, str]
 
-# Use placeholder for unimported PIL
+# Optional imports
+imagesize = None
+PIL = None
 
 
 def absolute_path(
@@ -86,6 +89,7 @@ def find_timestamped_folders(path):
     return nights
 
 
+@functools.lru_cache()
 def import_pil():
     """
     Import the Pillow library and return it.
@@ -98,10 +102,8 @@ def import_pil():
             import PIL.Image
         except ModuleNotFoundError:
             logger.error(
-                "Cannot read EXIF tags. Please install it with 'pip install pillow'"
+                "\n * Cannot read EXIF tags. Please install it with 'pip install pillow'"
             )
-            raise
-    return PIL
 
 
 def get_exif(img_path):
@@ -109,6 +111,9 @@ def get_exif(img_path):
     Read the EXIF tags in an image file
     """
     import_pil()
+
+    if PIL is None:
+        return {}
 
     img = PIL.Image.open(img_path)
     img_exif = img.getexif()
@@ -171,18 +176,27 @@ def construct_exif(
     return exif
 
 
+@functools.lru_cache()
+def import_imagesize():
+    """
+    Import the imagesize library and return it.
+    """
+    global imagesize
+    if imagesize is None:
+        try:
+            import imagesize
+        except ModuleNotFoundError:
+            logger.error(
+                "\n * Could not calculate image sizes. Please install 'imagesize' with 'pip install imagesize'"
+            )
+
+
 def get_image_dimensions(img_path) -> Optional[tuple[int, int]]:
     """
     Get the dimensions of an image without loading it into memory.
     """
-    try:
-        import imagesize
-    except ModuleNotFoundError:
-        logger.error(
-            "Could not calculate image size. Please install 'imagesize' with 'pip install imagesize'"
-        )
-        return None
-    else:
+    import_imagesize()
+    if imagesize:
         return imagesize.get(img_path)
 
 
@@ -480,15 +494,21 @@ def write_csv(
         "url",
     ]
 
-    import tqdm
+    try:
+        from tqdm import tqdm
+    except ModuleNotFoundError:
+        logger.warning(
+            "\n * To see a progress bar install 'tqdm' with 'pip install tqdm'"
+        )
+        tqdm = lambda x, **kwargs: x
 
     file_count = 0
     unique_dirs = set()
     with open(output_path, "w") as f:
         writer = csv.DictWriter(f, fieldnames=columns)
         writer.writeheader()
-        print(f"Writing inventory to {output_path}")
-        for image in tqdm.tqdm(images, desc="Found images"):
+        print(f'Writing inventory to "{output_path}"')
+        for image in tqdm(images, desc="Found images"):
             writer.writerow(image)
             file_count += 1
             unique_dirs.add(pathlib.Path(image["path"]).parent)
@@ -497,7 +517,9 @@ def write_csv(
                     f" Found {file_count} in {len(unique_dirs)} directories and counting..."
                 )
 
-    print(f"Found {file_count} images in total.")
+    print()
+    print(f"Found a total of {file_count} images in {len(unique_dirs)} directories")
+    print(f'Inventory written to "{output_path.absolute()}"')
     return output_path
 
 
